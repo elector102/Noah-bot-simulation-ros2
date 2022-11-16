@@ -6,11 +6,46 @@ SCRIPTS_DIR=$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )
 REPO_DIR=`readlink -f ${SCRIPTS_DIR}/../`
 DOCKER_MOUNT_ARGS="-v ${REPO_DIR}/:/home/colcon_ws/src"
 
+OS_VERSION=jammy
+IMAGE_NAME=docker_humble_noahbot
+CONTAINER_NAME=noah_ws_${OS_VERSION}
+
+# Check if name container is already taken.
+if sudo -g docker docker container ls -a | grep -w "${CONTAINER_NAME}$" -c &> /dev/null; then
+		echo "ssssssssssssssssss"
+   printf "Error: Docker container called $CONTAINER_NAME is already opened.     \
+   \n\nTry removing the old container by doing: \n\t docker rm $CONTAINER_NAME   \
+   \nor just initialize it with a different name.\n"
+   exit 1
+fi
+
 xhost +local:root
-docker run -it -e DISPLAY -v "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
+docker run -it \
+	-e DISPLAY \
+	-v "/tmp/.X11-unix:/tmp/.X11-unix:rw" \
 	${DOCKER_MOUNT_ARGS} \
 	-e "TERM=xterm-256color" \
 	--net=host \
 	--gpus all \
-    --name noah_docker_humble_process \
-	--privileged --rm docker_humble_noahbot /bin/bash
+	--privileged \
+	--name $CONTAINER_NAME $IMAGE_NAME
+  --rm noah_ws_jammy tmux
+
+
+
+# Trap workspace exits and give the user the choice to save changes.
+function onexit() {
+  while true; do
+    read -p "Do you want to overwrite the image called '$IMAGE_NAME' with the current changes? [y/n]: " answer
+    if [[ "${answer:0:1}" =~ y|Y ]]; then
+      echo "Overwriting docker image..."
+      sudo docker commit $CONTAINER_NAME $IMAGE_NAME
+      break
+    elif [[ "${answer:0:1}" =~ n|N ]]; then
+      break
+    fi
+  done
+  docker stop $CONTAINER_NAME > /dev/null
+  docker rm $CONTAINER_NAME > /dev/null
+}
+trap onexit EXIT
